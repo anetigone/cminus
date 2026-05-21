@@ -337,7 +337,7 @@ mod comparison_operator_tests {
     fn test_less_than_or_equal() {
         let (tokens, errors) = tokenize("<=");
         assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0].kind, TokenKind::Lte);
+        assert_eq!(tokens[0].kind, TokenKind::Le);
         assert!(errors.is_empty());
     }
 
@@ -353,7 +353,7 @@ mod comparison_operator_tests {
     fn test_greater_than_or_equal() {
         let (tokens, errors) = tokenize(">=");
         assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0].kind, TokenKind::Gte);
+        assert_eq!(tokens[0].kind, TokenKind::Ge);
         assert!(errors.is_empty());
     }
 

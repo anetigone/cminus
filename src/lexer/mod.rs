@@ -252,7 +252,7 @@ impl Lexer {
             '<' => {
                 if self.peek() == Some('=') {
                     self.advance(); //消耗 '='
-                    Some(Token::new(TokenKind::Lte, span))
+                    Some(Token::new(TokenKind::Le, span))
                 }
                 else {
                     Some(Token::new(TokenKind::Lt, span))
@@ -261,7 +261,7 @@ impl Lexer {
             '>' => {
                 if self.peek() == Some('=') {
                     self.advance(); //消耗 '='
-                    Some(Token::new(TokenKind::Gte, span))
+                    Some(Token::new(TokenKind::Ge, span))
                 }
                 else {
                     Some(Token::new(TokenKind::Gt, span))
