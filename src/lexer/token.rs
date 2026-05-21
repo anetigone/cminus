@@ -68,10 +68,10 @@ pub enum TokenKind {
     Lt,
     /// GT
     Gt,
-    /// LTE
-    Lte,
-    /// GTE
-    Gte,
+    /// LE
+    Le,
+    /// GE
+    Ge,
     
     // 分隔符
     /// SEMICOLON

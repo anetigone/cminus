@@ -433,4 +433,173 @@ impl Parser {
     //  type-specifier → 'int' | 'void'
     // ─────────────────────────────────────────────
 }
+fn parse_expression_stmt(&mut self) -> ParseResult<Stmt> {
+        let expr = self.parse_expression()?;
+        self.expect(TokenKind::Semicolon)?;
+        Ok(Stmt::Expression(Some(expr)))
+    }
+
+    fn parse_selection_stmt(&mut self) -> ParseResult<Stmt> {
+        self.advance(); // consume 'if'
+        self.expect(TokenKind::LParen)?;
+        let condition = self.parse_expression()?;
+        self.expect(TokenKind::RParen)?;
+        let then_branch = Box::new(self.parse_stmt()?);
+        let else_branch = if self.matches(&TokenKind::Else) {
+            self.advance();
+            Some(Box::new(self.parse_stmt()?))
+        } else {
+            None
+        };
+        Ok(Stmt::Selection(SelectionStmt {
+            condition,
+            then_brach: then_branch,
+            else_brach: else_branch,
+        }))
+    }
+
+    fn parse_iteration_stmt(&mut self) -> ParseResult<Stmt> {
+        self.advance(); // consume 'while'
+        self.expect(TokenKind::LParen)?;
+        let condition = self.parse_expression()?;
+        self.expect(TokenKind::RParen)?;
+        let body = Box::new(self.parse_stmt()?);
+        Ok(Stmt::Iteration(IterationStmt { condition, body }))
+    }
+
+    fn parse_return_stmt(&mut self) -> ParseResult<Stmt> {
+        self.advance(); // consume 'return'
+        if self.matches(&TokenKind::Semicolon) {
+            self.advance();
+            Ok(Stmt::Return(None))
+        } else {
+            let expr = self.parse_expression()?;
+            self.expect(TokenKind::Semicolon)?;
+            Ok(Stmt::Return(Some(expr)))
+        }
+    }
+
+    pub fn parse_expression(&mut self) -> ParseResult<Expression> {
+        let expr = self.parse_simple_expression()?;
+        if let Expression::LVar(lvar) = &expr {
+            if self.matches(&TokenKind::Assign) {
+                self.advance();
+                let rhs = self.parse_expression()?;
+                return Ok(Expression::Assign {
+                    lvar: lvar.clone(),
+                    expr: Box::new(rhs),
+                });
+            }
+        }
+        Ok(expr)
+    }
+
+    fn parse_simple_expression(&mut self) -> ParseResult<Expression> {
+        let left = self.parse_additive_expr()?;
+        let op = match self.peek() {
+            TokenKind::Lte => { self.advance(); BinaryOp::Lte }
+            TokenKind::Lt => { self.advance(); BinaryOp::Lt }
+            TokenKind::Gte => { self.advance(); BinaryOp::Gte }
+            TokenKind::Gt => { self.advance(); BinaryOp::Gt }
+            TokenKind::Eq => { self.advance(); BinaryOp::Eq }
+            TokenKind::Ne => { self.advance(); BinaryOp::Neq }
+            _ => return Ok(left),
+        };
+        let right = self.parse_additive_expr()?;
+        Ok(Expression::BinOp {
+            op,
+            left: Box::new(left),
+            right: Box::new(right),
+        })
+    }
+
+    fn parse_additive_expr(&mut self) -> ParseResult<Expression> {
+        let mut left = self.parse_term()?;
+        while matches!(self.peek(), TokenKind::Plus | TokenKind::Minus) {
+            let op = match self.peek() {
+                TokenKind::Plus => { self.advance(); BinaryOp::Add }
+                TokenKind::Minus => { self.advance(); BinaryOp::Sub }
+                _ => unreachable!(),
+            };
+            let right = self.parse_term()?;
+            left = Expression::BinOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_term(&mut self) -> ParseResult<Expression> {
+        let mut left = self.parse_factor()?;
+        while matches!(self.peek(), TokenKind::Star | TokenKind::Slash) {
+            let op = match self.peek() {
+                TokenKind::Star => { self.advance(); BinaryOp::Mul }
+                TokenKind::Slash => { self.advance(); BinaryOp::Div }
+                _ => unreachable!(),
+            };
+            let right = self.parse_factor()?;
+            left = Expression::BinOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_factor(&mut self) -> ParseResult<Expression> {
+        match self.peek() {
+            TokenKind::Number(n) => {
+                let n = *n as i32;
+                self.advance();
+                Ok(Expression::Number(n))
+            }
+            TokenKind::LParen => {
+                self.advance();
+                let expr = self.parse_expression()?;
+                self.expect(TokenKind::RParen)?;
+                Ok(expr)
+            }
+            TokenKind::Identifier(_) => {
+                let name = self.expect_identifier()?;
+                self.parse_factor_tail(name)
+            }
+            _ => Err(ParseError::new(
+                format!("Unexpected token in expression: {:?}", self.peek()),
+                self.current(),
+            )),
+        }
+    }
+
+    fn parse_factor_tail(&mut self, name: String) -> ParseResult<Expression> {
+        match self.peek() {
+            TokenKind::LParen => {
+                self.advance();
+                let mut args = Vec::new();
+                if !self.matches(&TokenKind::RParen) {
+                    loop {
+                        args.push(self.parse_expression()?);
+                        if self.matches(&TokenKind::RParen) {
+                            break;
+                        }
+                        self.expect(TokenKind::Comma)?;
+                    }
+                }
+                self.expect(TokenKind::RParen)?;
+                Ok(Expression::Call { name, args })
+            }
+            TokenKind::LBracket => {
+                self.advance();
+                let index = self.parse_expression()?;
+                self.expect(TokenKind::RBracket)?;
+                Ok(Expression::LVar(LVar {
+                    name,
+                    index: Some(Box::new(index)),
+                }))
+            }
+            _ => Ok(Expression::LVar(LVar { name, index: None })),
+        }
+    }
 ```

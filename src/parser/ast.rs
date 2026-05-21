@@ -60,7 +60,8 @@ pub enum Stmt {
     Compound(CompoundStmt), // compound-stmt
     Selection(SelectionStmt), // selection-stmt
     Iteration(IterationStmt), // iteration-stmt
-    Return(Option<Expression>) // return-stmt,None表示没有返回值
+    Return(Option<Expression>), // return-stmt,None表示没有返回值
+    Empty // 空语句
 }
 
 /// if语句
@@ -102,7 +103,7 @@ pub enum Expression {
 #[derive(Debug, Clone)]
 pub struct LVar {
     pub name: String,
-    pub array_size: Option<u32> //None表示不是数组,Some表示数组大小
+    pub index: Option<Box<Expression>>, //None表示普通变量,Some表示数组下标表达式
 }
 
 /// 二元运算符
@@ -119,13 +120,13 @@ pub enum BinaryOp {
     /// ==
     Eq,
     /// !=
-    Neq,
+    Ne,
     /// <
     Lt,
     /// >
     Gt,
     /// <=
-    Lte,
+    Le,
     /// >=
-    Gte
+    Ge
 }
