@@ -86,6 +86,7 @@ mulop                → '*' | '/'
 factor               → '(' expression ')'
                      | ID factor-tail
                      | NUM
+                     | STRING
 
 factor-tail          → '(' args ')'                          (函数调用)
                      | '[' expression ']'                     (数组下标)
@@ -202,6 +203,7 @@ pub enum Expression {
         args: Vec<Expression>,
     },
     Num(i64),
+    String(String),
 }
 
 /// 变量引用（左值）
@@ -555,6 +557,11 @@ fn parse_expression_stmt(&mut self) -> ParseResult<Stmt> {
                 let n = *n as i32;
                 self.advance();
                 Ok(Expression::Number(n))
+            }
+            TokenKind::String(value) => {
+                let value = value.clone();
+                self.advance();
+                Ok(Expression::String(value))
             }
             TokenKind::LParen => {
                 self.advance();

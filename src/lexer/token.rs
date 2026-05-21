@@ -1,5 +1,5 @@
-use std::fmt;
 use displaydoc::Display;
+use std::fmt;
 
 /// Token的位置
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,7 +42,7 @@ pub enum TokenKind {
     // 标识符
     /// ID({0})
     Identifier(String),
-    
+
     // 字面量
     /// NUM({0})
     Number(i64),
@@ -72,7 +72,7 @@ pub enum TokenKind {
     Le,
     /// GE
     Ge,
-    
+
     // 分隔符
     /// SEMICOLON
     Semicolon,
@@ -94,7 +94,6 @@ pub enum TokenKind {
     // 其他
     /// EOF
     EOF, // End of file
-
 }
 
 impl TokenKind {
@@ -126,7 +125,11 @@ impl Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{:>3}:{:<3}] {}", self.span.row, self.span.col, self.kind)
+        write!(
+            f,
+            "[{:>3}:{:<3}] {}",
+            self.span.row, self.span.col, self.kind
+        )
     }
 }
 

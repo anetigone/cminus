@@ -1,5 +1,5 @@
-use crate::lexer::{Lexer, Token, TokenKind, Span};
 use crate::lexer::LexError;
+use crate::lexer::{Lexer, Span, Token, TokenKind};
 
 // 辅助函数：创建词法分析器并获取所有token
 fn tokenize(source: &str) -> (Vec<Token>, Vec<LexError>) {
@@ -8,7 +8,6 @@ fn tokenize(source: &str) -> (Vec<Token>, Vec<LexError>) {
     let errors = lexer.errors;
     (tokens, errors)
 }
-
 
 #[cfg(test)]
 mod basic_tests {
@@ -145,7 +144,10 @@ mod identifier_tests {
     fn test_identifier_starting_with_underscore() {
         let (tokens, errors) = tokenize("_private");
         assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0].kind, TokenKind::Identifier("_private".to_string()));
+        assert_eq!(
+            tokens[0].kind,
+            TokenKind::Identifier("_private".to_string())
+        );
         assert!(errors.is_empty());
     }
 
@@ -258,7 +260,10 @@ mod string_tests {
     fn test_string_with_escape_n() {
         let (tokens, errors) = tokenize("\"hello\\nworld\"");
         assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0].kind, TokenKind::String("hello\nworld".to_string()));
+        assert_eq!(
+            tokens[0].kind,
+            TokenKind::String("hello\nworld".to_string())
+        );
         assert!(errors.is_empty());
     }
 
@@ -266,7 +271,10 @@ mod string_tests {
     fn test_string_with_escape_t() {
         let (tokens, errors) = tokenize("\"hello\\tworld\"");
         assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0].kind, TokenKind::String("hello\tworld".to_string()));
+        assert_eq!(
+            tokens[0].kind,
+            TokenKind::String("hello\tworld".to_string())
+        );
         assert!(errors.is_empty());
     }
 
@@ -274,7 +282,10 @@ mod string_tests {
     fn test_string_with_escape_backslash() {
         let (tokens, errors) = tokenize("\"hello\\\\world\"");
         assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0].kind, TokenKind::String("hello\\world".to_string()));
+        assert_eq!(
+            tokens[0].kind,
+            TokenKind::String("hello\\world".to_string())
+        );
         assert!(errors.is_empty());
     }
 
@@ -282,7 +293,10 @@ mod string_tests {
     fn test_string_with_escape_quote() {
         let (tokens, errors) = tokenize("\"hello\\\"world\"");
         assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0].kind, TokenKind::String("hello\"world".to_string()));
+        assert_eq!(
+            tokens[0].kind,
+            TokenKind::String("hello\"world".to_string())
+        );
         assert!(errors.is_empty());
     }
 
@@ -362,7 +376,7 @@ mod comparison_operator_tests {
         let (tokens, errors) = tokenize("x = 5; if (x == 5)");
         assert_eq!(tokens.len(), 11);
         assert_eq!(tokens[1].kind, TokenKind::Assign); // =
-        assert_eq!(tokens[7].kind, TokenKind::Eq);     // ==
+        assert_eq!(tokens[7].kind, TokenKind::Eq); // ==
         assert!(errors.is_empty());
     }
 }
@@ -644,7 +658,10 @@ mod complex_tests {
         assert_eq!(tokens.len(), 6);
         assert_eq!(tokens[0].kind, TokenKind::Identifier("print".to_string()));
         assert_eq!(tokens[1].kind, TokenKind::LParen);
-        assert_eq!(tokens[2].kind, TokenKind::String("Hello, World!".to_string()));
+        assert_eq!(
+            tokens[2].kind,
+            TokenKind::String("Hello, World!".to_string())
+        );
         assert_eq!(tokens[3].kind, TokenKind::RParen);
         assert_eq!(tokens[4].kind, TokenKind::Semicolon);
         assert!(errors.is_empty());

@@ -19,8 +19,7 @@ impl Parser {
 }
 
 /// 基础操作
-impl Parser{
-
+impl Parser {
     /// 获取当前token，不消耗
     pub fn peek(&self) -> &TokenKind {
         self.tokens
@@ -192,7 +191,7 @@ impl Parser {
             )),
         }
     }
-    
+
     /// 解析参数列表
     pub fn parse_params(&mut self) -> ParseResult<Vec<Param>> {
         let mut params = Vec::new();
@@ -202,7 +201,7 @@ impl Parser {
         }
 
         // Parse parameter declarations
-        loop {
+        while !self.matches(&TokenKind::RParen) {
             let type_spec = self.parse_type_spec()?;
             let name = self.expect_identifier()?;
             if self.matches(&TokenKind::LBracket) {
@@ -213,13 +212,17 @@ impl Parser {
                     None
                 };
                 self.expect(TokenKind::RBracket)?;
-                params.push(Param { type_spec, name, array_size });
+                params.push(Param {
+                    type_spec,
+                    name,
+                    array_size,
+                });
             } else {
-                params.push(Param { type_spec, name, array_size: None });
-            }
-
-            if self.matches(&TokenKind::RParen) {
-                break;
+                params.push(Param {
+                    type_spec,
+                    name,
+                    array_size: None,
+                });
             }
 
             self.expect(TokenKind::Comma)?;
@@ -252,7 +255,7 @@ impl Parser {
         self.expect(TokenKind::LParen)?; // 消耗 '('
         let condition = self.parse_expression()?;
         self.expect(TokenKind::RParen)?; // 消耗 ')'
-        
+
         let then_branch = Box::new(self.parse_stmt()?); // 解析 then 分支
         let else_branch = if self.matches(&TokenKind::Else) {
             self.advance();
@@ -260,10 +263,10 @@ impl Parser {
         } else {
             None
         };
-        Ok(Stmt::Selection(SelectionStmt { 
-            condition, 
-            then_brach: then_branch, 
-            else_brach: else_branch 
+        Ok(Stmt::Selection(SelectionStmt {
+            condition,
+            then_brach: then_branch,
+            else_brach: else_branch,
         }))
     }
 
@@ -296,11 +299,12 @@ impl Parser {
             TokenKind::Ne => BinaryOp::Ne,
             _ => return Ok(left),
         };
+        self.advance();
         let right = self.parse_additive_expression()?;
-        Ok(Expression::BinOp { 
-            op, 
-            left: Box::new(left), 
-            right: Box::new(right) 
+        Ok(Expression::BinOp {
+            op,
+            left: Box::new(left),
+            right: Box::new(right),
         })
     }
 
@@ -316,10 +320,10 @@ impl Parser {
             };
             self.advance();
             let right = self.parse_term()?;
-            left = Expression::BinOp { 
-                op, 
-                left: Box::new(left), 
-                right: Box::new(right) 
+            left = Expression::BinOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
             };
         }
         Ok(left)
@@ -337,16 +341,16 @@ impl Parser {
             };
             self.advance();
             let right = self.parse_factor()?;
-            left = Expression::BinOp { 
-                op, 
-                left: Box::new(left), 
-                right: Box::new(right) 
+            left = Expression::BinOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
             };
         }
         Ok(left)
     }
 
-    /// 解析一个因子, factor → '(' expression ')'| ID factor-tail | NUM
+    /// 解析一个因子, factor → '(' expression ')'| ID factor-tail | NUM | STRING
     pub fn parse_factor(&mut self) -> ParseResult<Expression> {
         match self.peek() {
             TokenKind::LParen => {
@@ -364,8 +368,16 @@ impl Parser {
                 self.advance(); // 消耗 NUM
                 Ok(Expression::Number(num))
             }
+            TokenKind::String(value) => {
+                let value = value.clone();
+                self.advance(); // 消耗 STRING
+                Ok(Expression::String(value))
+            }
             _ => Err(ParseError::new(
-                format!("Expected '(', identifier, or number, found {:?}", self.peek()),
+                format!(
+                    "Expected '(', identifier, number, or string, found {:?}",
+                    self.peek()
+                ),
                 self.current(),
             )),
         }
@@ -373,19 +385,68 @@ impl Parser {
 
     /// 解析一个因子的尾部(函数调用), factor-tail → '(' args ')' | ε
     pub fn parse_factor_tail(&mut self, name: String) -> ParseResult<Expression> {
-        todo!()
+        match self.peek() {
+            TokenKind::LParen => {
+                self.advance();
+                let mut args = Vec::new();
+                if !self.matches(&TokenKind::RParen) {
+                    args.push(self.parse_expression()?);
+                    while !self.matches(&TokenKind::RParen) {
+                        self.expect(TokenKind::Comma)?;
+                        args.push(self.parse_expression()?);
+                    }
+                }
+                self.expect(TokenKind::RParen)?;
+                Ok(Expression::Call { name, args })
+            }
+            TokenKind::LBracket => {
+                self.advance();
+                let index = self.parse_expression()?;
+                self.expect(TokenKind::RBracket)?;
+                Ok(Expression::LVar(LVar {
+                    name,
+                    index: Some(Box::new(index)),
+                }))
+            }
+            _ => Ok(Expression::LVar(LVar { name, index: None })), // ε
+        }
     }
 
     pub fn parse_iteration_stmt(&mut self) -> ParseResult<Stmt> {
-        Ok(Stmt::Empty)
+        self.advance(); // 消耗 'while'
+        self.expect(TokenKind::LParen)?; // 消耗 '('
+
+        let condition = self.parse_expression()?;
+        self.expect(TokenKind::RParen)?; // 消耗 ')'
+
+        let body = self.parse_stmt()?; // 解析循环体
+
+        Ok(Stmt::Iteration(IterationStmt {
+            condition,
+            body: Box::new(body),
+        }))
     }
 
     pub fn parse_return_stmt(&mut self) -> ParseResult<Stmt> {
-        Ok(Stmt::Empty)
+        self.advance(); // 消耗 'return'
+
+        match self.peek() {
+            TokenKind::Semicolon => {
+                self.advance(); // 消耗 ';'
+                Ok(Stmt::Return(None))
+            }
+            _ => {
+                let expr = self.parse_expression()?;
+                self.expect(TokenKind::Semicolon)?;
+                Ok(Stmt::Return(Some(expr)))
+            }
+        }
     }
 
     pub fn parse_expression_stmt(&mut self) -> ParseResult<Stmt> {
-        Ok(Stmt::Empty)
+        let expr = self.parse_expression()?;
+        self.expect(TokenKind::Semicolon)?;
+        Ok(Stmt::Expression(Some(expr)))
     }
 
     pub fn parse_compound_stmt(&mut self) -> ParseResult<CompoundStmt> {
@@ -407,5 +468,68 @@ impl Parser {
             stmts: statements,
         })
     }
+}
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::Lexer;
+
+    fn parse_source(source: &str) -> Program {
+        let mut lexer = Lexer::new(source.to_string());
+        let tokens = lexer.tokenize();
+        assert!(lexer.errors.is_empty(), "{:?}", lexer.errors);
+
+        let mut parser = Parser::new(tokens);
+        parser.parse_program().expect("program should parse")
+    }
+
+    fn only_function(program: Program) -> FuncDecl {
+        assert_eq!(program.declarations.len(), 1);
+        match program.declarations.into_iter().next().unwrap() {
+            Declaration::Func(func) => func,
+            other => panic!("expected function declaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parses_string_return_expression() {
+        let func = only_function(parse_source(r#"void main(){ return "hello"; }"#));
+
+        match &func.body.stmts[0] {
+            Stmt::Return(Some(Expression::String(value))) => assert_eq!(value, "hello"),
+            stmt => panic!("expected string return, got {:?}", stmt),
+        }
+    }
+
+    #[test]
+    fn parses_string_call_argument() {
+        let func = only_function(parse_source(r#"void main(){ output("hello\nworld"); }"#));
+
+        match &func.body.stmts[0] {
+            Stmt::Expression(Some(Expression::Call { name, args })) => {
+                assert_eq!(name, "output");
+                assert_eq!(args.len(), 1);
+                match &args[0] {
+                    Expression::String(value) => assert_eq!(value, "hello\nworld"),
+                    expr => panic!("expected string argument, got {:?}", expr),
+                }
+            }
+            stmt => panic!("expected call expression statement, got {:?}", stmt),
+        }
+    }
+
+    #[test]
+    fn parses_string_relational_expression() {
+        let func = only_function(parse_source(r#"void main(){ return "a" == "b"; }"#));
+
+        match &func.body.stmts[0] {
+            Stmt::Return(Some(Expression::BinOp { op, left, right })) => {
+                assert_eq!(*op, BinaryOp::Eq);
+                assert!(matches!(left.as_ref(), Expression::String(value) if value == "a"));
+                assert!(matches!(right.as_ref(), Expression::String(value) if value == "b"));
+            }
+            stmt => panic!("expected string equality return, got {:?}", stmt),
+        }
+    }
 }

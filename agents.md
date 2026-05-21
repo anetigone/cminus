@@ -1,11 +1,14 @@
-1. Project Overview
+### 1. Project Overview
+
 This is a C-Minus compiler written in Rust. C-Minus is a subset of the C language (based on Kenneth Louden's "Compiler Construction: Principles and Practice", Appendix A). The project implements a multi-pass compiler pipeline:
 - Phase 1: Lexer (tokenizer) -- mostly complete
 - Phase 2: Parser (recursive descent) -- partially implemented, several methods are stubs
 - Phase 3: Semantic Analyzer -- not yet implemented
 - Phase 4: Code Generator -- not yet implemented
 The Rust edition is 2024. The only dependency is displaydoc = "0.2.5" (used for deriving Display on the TokenKind and BinaryOp enums via doc comments).
-2. Directory Structure Overview
+
+### 2. Directory Structure Overview
+
 D:\vscode\rust\c_minus\
 ├── Cargo.toml                  # Package manifest (name: "c_minus", edition 2024)
 ├── Cargo.lock
@@ -31,7 +34,9 @@ D:\vscode\rust\c_minus\
 Key design documents:
 - lexer.md -- The original lexer design specification. Contains the token type definitions, DFA state transition diagram, error handling strategy, and original reference implementation code (the actual implementation in src/ has since diverged/evolved from this spec).
 - parser.md -- The parser design specification including BNF grammar, EBNF rewrite, AST node definitions, and a reference implementation. The actual parser in src/parser/ partially follows this.
-3. Contents of the examples Directory
+
+### 3. Contents of the examples Directory
+
 There is a single example file:
 D:\vscode\rust\c_minus\examples\gcd_test.rs (42 lines)
 This example demonstrates lexing a complete C-Minus program consisting of two functions:
@@ -52,8 +57,11 @@ let tokens = lexer.tokenize();
 // ... prints each token with [row:col] and token kind
 // ... prints any errors found
 It creates a lexer, tokenizes the source, prints every token with its position, and reports any lexical errors. It uses the library crate (c_minus::lexer).
-4. Key Lexer Implementation Details
-4.1 Core Types
+
+### 4. Key Lexer Implementation Details
+
+#### 4.1 Core Types
+
 Span (src/lexer/token.rs, line 6):
 pub struct Span {
     pub row: usize,  // 1-based line number
@@ -84,9 +92,13 @@ The actual implementation extends the original design doc (lexer.md) in several 
 - Single-line comments: Added // style comments (not in original C-Minus spec)
 - Underscores in identifiers: _ is allowed as the first character in identifiers, and identifiers can contain alphanumeric characters (not just alphabetic as in the original spec)
 - Fully tested: 40+ test cases in tests.rs
-5. Lexical Error Types and How They're Reported
-5.1 The LexError Struct
+
+### 5. Lexical Error Types and How They're Reported
+
+#### 5.1 The LexError Struct
+
 File: D:\vscode\rust\c_minus\src\lexer\error.rs
+
 #[derive(Debug, Clone)]
 pub struct LexError {
     pub message: String,
@@ -99,7 +111,9 @@ impl fmt::Display for LexError {
 }
 impl Error for LexError {}
 The output format is: "LexError at (row, col): <message>"
-5.2 Four Specific Error Cases Detected
+
+#### 5.2 Four Specific Error Cases Detected
+
 All errors are pushed into self.errors (a Vec<LexError> on the Lexer struct) and the lexer continues scanning (error recovery). The four error types are:
 (a) Unterminated block comment -- D:\vscode\rust\c_minus\src\lexer\mod.rs, lines 93-102
 pub fn skip_block_comment(&mut self, start_span: Span) {
@@ -183,7 +197,9 @@ _ => {
     self.next_token()  // skip and continue
 }
 Detected when: A character like @, $, #, etc., is encountered that doesn't match any valid token starting character. The span points to the offending character.
-5.3 Error Recovery Strategy
+
+#### 5.3 Error Recovery Strategy
+
 The error recovery is consistent across all error cases:
 1. The error is pushed into self.errors (accumulated, not fatal)
 2. The lexer calls self.next_token() recursively (or returns None for unterminated strings) to skip past the problematic input and continue scanning

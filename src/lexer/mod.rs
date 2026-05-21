@@ -1,10 +1,10 @@
-pub mod token;
 pub mod error;
 #[cfg(test)]
 mod tests;
+pub mod token;
 
-use token::{Token, TokenKind, Span};
 use error::LexError;
+use token::{Span, Token, TokenKind};
 
 /// 词法分析器
 pub struct Lexer {
@@ -59,7 +59,7 @@ impl Lexer {
         }
         Some(current_char)
     }
-    
+
     /// 记录当前位置
     fn current_span(&self) -> Span {
         Span::new(self.line, self.column)
@@ -98,7 +98,10 @@ impl Lexer {
             }
         }
 
-        self.errors.push(LexError::new("Unterminated block comment".to_string(), start_span));
+        self.errors.push(LexError::new(
+            "Unterminated block comment".to_string(),
+            start_span,
+        ));
     }
 
     /// 扫描标识符
@@ -110,8 +113,7 @@ impl Lexer {
             if ch.is_ascii_alphanumeric() || ch == '_' {
                 identifier.push(ch);
                 self.advance();
-            }
-            else {
+            } else {
                 break;
             }
         }
@@ -130,8 +132,7 @@ impl Lexer {
             if ch.is_digit(10) {
                 number.push(ch);
                 self.advance();
-            }
-            else {
+            } else {
                 break;
             }
         }
@@ -160,7 +161,8 @@ impl Lexer {
             }
         }
 
-        self.errors.push(LexError::new("Unterminated string".to_string(), start_span));
+        self.errors
+            .push(LexError::new("Unterminated string".to_string(), start_span));
         None
     }
 
@@ -172,11 +174,17 @@ impl Lexer {
             Some('\\') => Some('\\'),
             Some('"') => Some('"'),
             Some(ch) => {
-                self.errors.push(LexError::new(format!("Unknown escape character: \\{}", ch), start_span.clone()));
+                self.errors.push(LexError::new(
+                    format!("Unknown escape character: \\{}", ch),
+                    start_span.clone(),
+                ));
                 Some(ch) // 仍然返回原字符，继续解析
             }
             None => {
-                self.errors.push(LexError::new("Unterminated string".to_string(), start_span.clone()));
+                self.errors.push(LexError::new(
+                    "Unterminated string".to_string(),
+                    start_span.clone(),
+                ));
                 None
             }
         }
@@ -217,7 +225,7 @@ impl Lexer {
         }
 
         // --- 运算符&分隔符 ---
-        self.advance();//消耗当前字符
+        self.advance(); //消耗当前字符
 
         match ch {
             '+' => Some(Token::new(TokenKind::Plus, span)),
@@ -230,53 +238,50 @@ impl Lexer {
                     self.advance(); //消耗 '/'
                     self.skip_line_comment();
                     self.next_token()
-                }
-                else if self.peek() == Some('*') {
+                } else if self.peek() == Some('*') {
                     self.advance(); //消耗 '*'
                     self.skip_block_comment(span);
                     self.next_token()
-                }
-                else {
+                } else {
                     Some(Token::new(TokenKind::Slash, span))
                 }
-            },
+            }
             '=' => {
                 if self.peek() == Some('=') {
                     self.advance(); //消耗 '='
                     Some(Token::new(TokenKind::Eq, span))
-                }
-                else {
+                } else {
                     Some(Token::new(TokenKind::Assign, span))
                 }
-            },
+            }
             '<' => {
                 if self.peek() == Some('=') {
                     self.advance(); //消耗 '='
                     Some(Token::new(TokenKind::Le, span))
-                }
-                else {
+                } else {
                     Some(Token::new(TokenKind::Lt, span))
                 }
-            },
+            }
             '>' => {
                 if self.peek() == Some('=') {
                     self.advance(); //消耗 '='
                     Some(Token::new(TokenKind::Ge, span))
-                }
-                else {
+                } else {
                     Some(Token::new(TokenKind::Gt, span))
                 }
-            },
+            }
             '!' => {
                 if self.peek() == Some('=') {
                     self.advance(); //消耗 '='
                     Some(Token::new(TokenKind::Ne, span))
-                }
-                else {
+                } else {
                     self.errors.push(LexError::new(
-                        format!("Unexpected character: '{}',
-                        expected '!='", ch),
-                        span.clone()
+                        format!(
+                            "Unexpected character: '{}',
+                        expected '!='",
+                            ch
+                        ),
+                        span.clone(),
                     ));
                     self.next_token() //返回下一个token
                 }
@@ -292,13 +297,12 @@ impl Lexer {
             _ => {
                 self.errors.push(LexError::new(
                     format!("Unexpected character: '{}'", ch),
-                    span
+                    span,
                 ));
                 self.next_token() //返回下一个token
             }
         }
     }
-
 
     /// 获取所有token（包含最后的EOF）
     pub fn tokenize(&mut self) -> Vec<Token> {

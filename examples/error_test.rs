@@ -34,8 +34,10 @@ char* bad = "this string has no closing quote.
 
         println!("Tokens:\n");
         for token in &tokens {
-            println!("  [{:>3}:{:<3}] {}",
-                token.span.row, token.span.col, token.kind);
+            println!(
+                "  [{:>3}:{:<3}] {}",
+                token.span.row, token.span.col, token.kind
+            );
         }
 
         println!("\n------------------------------------------");
@@ -72,8 +74,10 @@ int swallowed = 100;
 
         println!("Tokens:\n");
         for token in &tokens {
-            println!("  [{:>3}:{:<3}] {}",
-                token.span.row, token.span.col, token.kind);
+            println!(
+                "  [{:>3}:{:<3}] {}",
+                token.span.row, token.span.col, token.kind
+            );
         }
 
         println!("\n------------------------------------------");

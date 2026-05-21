@@ -23,8 +23,10 @@ void main(void){
     let tokens = lexer.tokenize();
 
     for token in &tokens {
-        println!("  [{:>3}:{:<3}] {}",
-            token.span.row, token.span.col, token.kind);
+        println!(
+            "  [{:>3}:{:<3}] {}",
+            token.span.row, token.span.col, token.kind
+        );
     }
 
     println!("\n══════════════════════════════════════════");
