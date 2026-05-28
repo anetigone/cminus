@@ -41,4 +41,9 @@ void main(void){
     }
 
     println!("\n总 Token 数: {} (包括 EOF)", tokens.len());
+
+    let mut parser = c_minus::parser::Parser::new(tokens);
+    let ast = parser.parse_program();
+
+    
 }

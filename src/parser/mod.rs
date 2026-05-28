@@ -1,5 +1,7 @@
 pub mod ast;
 pub mod error;
+#[cfg(test)]
+mod tests;
 
 use crate::lexer::token::*;
 use ast::*;
@@ -200,6 +202,12 @@ impl Parser {
             return Ok(params);
         }
 
+        // void 作为唯一参数表示无参数
+        if self.matches(&TokenKind::Void) {
+            self.advance();
+            return Ok(params);
+        }
+
         // Parse parameter declarations
         while !self.matches(&TokenKind::RParen) {
             let type_spec = self.parse_type_spec()?;
@@ -225,7 +233,9 @@ impl Parser {
                 });
             }
 
-            self.expect(TokenKind::Comma)?;
+            if !self.matches(&TokenKind::RParen) {
+                self.expect(TokenKind::Comma)?;
+            }
         }
 
         Ok(params)
@@ -470,66 +480,3 @@ impl Parser {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::Lexer;
-
-    fn parse_source(source: &str) -> Program {
-        let mut lexer = Lexer::new(source.to_string());
-        let tokens = lexer.tokenize();
-        assert!(lexer.errors.is_empty(), "{:?}", lexer.errors);
-
-        let mut parser = Parser::new(tokens);
-        parser.parse_program().expect("program should parse")
-    }
-
-    fn only_function(program: Program) -> FuncDecl {
-        assert_eq!(program.declarations.len(), 1);
-        match program.declarations.into_iter().next().unwrap() {
-            Declaration::Func(func) => func,
-            other => panic!("expected function declaration, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn parses_string_return_expression() {
-        let func = only_function(parse_source(r#"void main(){ return "hello"; }"#));
-
-        match &func.body.stmts[0] {
-            Stmt::Return(Some(Expression::String(value))) => assert_eq!(value, "hello"),
-            stmt => panic!("expected string return, got {:?}", stmt),
-        }
-    }
-
-    #[test]
-    fn parses_string_call_argument() {
-        let func = only_function(parse_source(r#"void main(){ output("hello\nworld"); }"#));
-
-        match &func.body.stmts[0] {
-            Stmt::Expression(Some(Expression::Call { name, args })) => {
-                assert_eq!(name, "output");
-                assert_eq!(args.len(), 1);
-                match &args[0] {
-                    Expression::String(value) => assert_eq!(value, "hello\nworld"),
-                    expr => panic!("expected string argument, got {:?}", expr),
-                }
-            }
-            stmt => panic!("expected call expression statement, got {:?}", stmt),
-        }
-    }
-
-    #[test]
-    fn parses_string_relational_expression() {
-        let func = only_function(parse_source(r#"void main(){ return "a" == "b"; }"#));
-
-        match &func.body.stmts[0] {
-            Stmt::Return(Some(Expression::BinOp { op, left, right })) => {
-                assert_eq!(*op, BinaryOp::Eq);
-                assert!(matches!(left.as_ref(), Expression::String(value) if value == "a"));
-                assert!(matches!(right.as_ref(), Expression::String(value) if value == "b"));
-            }
-            stmt => panic!("expected string equality return, got {:?}", stmt),
-        }
-    }
-}
