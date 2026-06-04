@@ -1,4 +1,5 @@
 // gcd 函数词法分析测试
+use c_minus::parser::print::print_tree;
 
 fn main() {
     let source = r#"
@@ -43,7 +44,7 @@ void main(void){
     println!("\n总 Token 数: {} (包括 EOF)", tokens.len());
 
     let mut parser = c_minus::parser::Parser::new(tokens);
-    let ast = parser.parse_program();
+    let ast = parser.parse_program().unwrap();
 
-    
+    println!("AST:\n{}", print_tree(&ast));
 }
