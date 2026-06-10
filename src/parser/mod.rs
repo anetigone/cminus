@@ -6,7 +6,7 @@ mod tests;
 
 use crate::lexer::token::*;
 use ast::*;
-use error::ParseError;
+use error::{ParseError, ParseErrorKind};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -62,7 +62,8 @@ impl Parser {
         if self.matches(&expected) {
             Some(self.advance().clone())
         } else {
-            self.error(format!("Expected token {:?}, found {:?}", expected, self.peek()))
+            let found = self.peek().clone();
+            self.error(ParseErrorKind::ExpectedToken { expected, found })
         }
     }
 
@@ -82,7 +83,7 @@ impl Parser {
             self.advance();
             Some(name)
         } else {
-            self.error(format!("Expected identifier, found {:?}", self.peek()))
+            self.error(ParseErrorKind::ExpectedIdentifier { found: self.peek().clone() })
         }
     }
 
@@ -93,7 +94,7 @@ impl Parser {
             self.advance();
             Some(value)
         } else {
-            self.error(format!("Expected number, found {:?}", self.peek()))
+            self.error(ParseErrorKind::ExpectedNumber { found: self.peek().clone() })
         }
     }
 
@@ -103,36 +104,31 @@ impl Parser {
             self.advance();
             Some(value)
         } else {
-            self.error(format!("Expected string, found {:?}", self.peek()))
+            self.error(ParseErrorKind::ExpectedString { found: self.peek().clone() })
         }
     }
 
     /// 记录一个语法错误并返回 None
-    fn error<T>(&mut self, message: String) -> Option<T> {
-        self.errors.push(ParseError::new(message, self.current()));
+    fn error<T>(&mut self, kind: ParseErrorKind) -> Option<T> {
+        self.errors.push(ParseError::new(kind, self.current()));
         None
     }
 
     /// 恐慌模式同步：跳过 token 直到遇到同步点
     /// 同步 token: `;`、`)` (消费), `}`、`EOF` (不消费)
     fn synchronize(&mut self) {
-        loop {
-            match self.peek() {
-                TokenKind::Semicolon => {
-                    self.advance();
-                    return;
-                }
-                TokenKind::RParen => {
-                    self.advance();
-                    return;
-                }
-                TokenKind::RBrace | TokenKind::EOF => {
-                    return;
-                }
-                _ => {
-                    self.advance();
-                }
+        while !matches!(
+            self.peek(),
+            TokenKind::Semicolon | TokenKind::RParen | TokenKind::RBrace | TokenKind::EOF
+        ) {
+            self.advance();
+        }
+        match self.peek() {
+            TokenKind::Semicolon | TokenKind::RParen => {
+                self.advance();
             }
+            TokenKind::RBrace | TokenKind::EOF => {}
+            _ => unreachable!(),
         }
     }
 }
@@ -191,8 +187,15 @@ impl Parser {
             TokenKind::LBracket => {
                 // array declaration: type-specifier ID '[' NUM ']' ';'
                 self.advance();
-                let array_size = match self.expect_number() {
-                    Some(n) => n,
+                let array_size: u32 = match self.expect_number() {
+                    Some(n) => match n.try_into() {
+                        Ok(size) => size,
+                        Err(_) => {
+                            self.error::<()>(ParseErrorKind::ArraySizeTooLarge { value: n, max: u32::MAX });
+                            self.synchronize();
+                            return None;
+                        }
+                    },
                     None => {
                         self.synchronize();
                         return None;
@@ -209,7 +212,7 @@ impl Parser {
                 Some(Declaration::Var(VarDecl {
                     type_spec,
                     name,
-                    array_size: Some(array_size.try_into().unwrap()),
+                    array_size: Some(array_size),
                 }))
             }
             TokenKind::LParen => {
@@ -241,10 +244,7 @@ impl Parser {
                 }))
             }
             _ => {
-                self.error::<()>(format!(
-                    "Expected ';', '[', or '(', found {:?}",
-                    self.peek()
-                ));
+                self.error::<()>(ParseErrorKind::ExpectedDeclTail { found: self.peek().clone() });
                 self.synchronize();
                 None
             }
@@ -262,7 +262,7 @@ impl Parser {
                 self.advance();
                 Some(TypeSpec::Void)
             }
-            _ => self.error(format!("Expected type specifier, found {:?}", self.peek())),
+            _ => self.error(ParseErrorKind::ExpectedTypeSpec { found: self.peek().clone() }),
         }
     }
 
@@ -287,7 +287,11 @@ impl Parser {
             let array_size = if self.matches(&TokenKind::LBracket) {
                 self.advance();
                 let size = if matches!(self.peek(), TokenKind::Number(_)) {
-                    Some(self.expect_number()?.try_into().unwrap())
+                    let n = self.expect_number()?;
+                    match n.try_into() {
+                        Ok(size) => Some(size),
+                        Err(_) => return self.error(ParseErrorKind::ArraySizeTooLarge { value: n, max: u32::MAX }),
+                    }
                 } else {
                     None
                 };
@@ -482,10 +486,7 @@ impl Parser {
                 self.advance(); // 消耗 STRING
                 Some(Expression::String(value))
             }
-            _ => self.error(format!(
-                "Expected '(', identifier, number, or string, found {:?}",
-                self.peek()
-            )),
+            _ => self.error(ParseErrorKind::ExpectedFactor { found: self.peek().clone() }),
         }
     }
 
@@ -625,10 +626,7 @@ impl Parser {
             self.advance();
         } else {
             // 遇到 EOF 或其他意外 token，缺少 '}'
-            self.error::<()>(format!(
-                "Expected token RBrace, found {:?}",
-                self.peek()
-            ));
+            self.error::<()>(ParseErrorKind::MissingRBrace);
         }
 
         Some(CompoundStmt {

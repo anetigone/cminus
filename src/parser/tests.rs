@@ -652,30 +652,30 @@ mod error_tests {
     #[test]
     fn missing_semicolon() {
         let err = parse_source_err("int x");
-        assert!(err.message.contains("Expected"));
+        assert!(err.to_string().contains("Expected"));
     }
 
     #[test]
     fn missing_type() {
         let err = parse_source_err("x;");
-        assert!(err.message.contains("type specifier"));
+        assert!(err.to_string().contains("type specifier"));
     }
 
     #[test]
     fn missing_rparen() {
         let err = parse_source_err("void main( {}");
-        assert!(err.message.contains("Expected") || err.message.contains("expected"));
+        assert!(err.to_string().contains("Expected") || err.to_string().contains("expected"));
     }
 
     #[test]
     fn missing_rbrace() {
         let err = parse_source_err("void main() {");
-        assert!(err.message.contains("Expected") || err.message.contains("expected"));
+        assert!(err.to_string().contains("Expected") || err.to_string().contains("expected"));
     }
 
     #[test]
     fn invalid_token_in_decl() {
         let err = parse_source_err("int 123;");
-        assert!(err.message.contains("identifier") || err.message.contains("Expected"));
+        assert!(err.to_string().contains("identifier") || err.to_string().contains("Expected"));
     }
 }
