@@ -25,13 +25,14 @@ fn parse_and_show(name: &str, source: &str) {
     }
 
     let mut parser = Parser::new(tokens);
-    match parser.parse_program() {
-        Ok(ast) => {
-            println!("✓ 语法分析成功 (本应报错!)");
-            println!("AST:\n{}", c_minus::parser::print::print_tree(&ast));
-        }
-        Err(err) => {
-            println!("✗ 语法错误:");
+    let _ast = parser.parse_program();
+
+    if parser.errors.is_empty() {
+        println!("✓ 语法分析成功 (本应报错!)");
+        println!("AST:\n{}", c_minus::parser::print::print_tree(&_ast));
+    } else {
+        println!("✗ 语法错误:");
+        for err in &parser.errors {
             println!("  {}", err);
         }
     }
@@ -159,13 +160,15 @@ void main(void){
     let tokens = lexer.tokenize();
 
     let mut parser = Parser::new(tokens);
-    match parser.parse_program() {
-        Ok(ast) => {
-            println!("✓ 语法分析成功");
-            println!("AST:\n{}", c_minus::parser::print::print_tree(&ast));
-        }
-        Err(err) => {
-            println!("✗ 语法错误: {}", err);
+    let ast = parser.parse_program();
+
+    if parser.errors.is_empty() {
+        println!("✓ 语法分析成功");
+        println!("AST:\n{}", c_minus::parser::print::print_tree(&ast));
+    } else {
+        println!("✗ 语法错误:");
+        for err in &parser.errors {
+            println!("  {}", err);
         }
     }
 }

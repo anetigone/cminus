@@ -7,7 +7,9 @@ fn parse_source(source: &str) -> Program {
     assert!(lexer.errors.is_empty(), "{:?}", lexer.errors);
 
     let mut parser = Parser::new(tokens);
-    parser.parse_program().expect("program should parse")
+    let program = parser.parse_program();
+    assert!(parser.errors.is_empty(), "{:?}", parser.errors);
+    program
 }
 
 fn parse_source_err(source: &str) -> ParseError {
@@ -16,7 +18,9 @@ fn parse_source_err(source: &str) -> ParseError {
     assert!(lexer.errors.is_empty(), "{:?}", lexer.errors);
 
     let mut parser = Parser::new(tokens);
-    parser.parse_program().unwrap_err()
+    let _program = parser.parse_program();
+    assert!(!parser.errors.is_empty(), "expected at least one parse error");
+    parser.errors.remove(0)
 }
 
 fn only_function(program: Program) -> FuncDecl {

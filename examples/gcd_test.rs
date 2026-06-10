@@ -44,7 +44,16 @@ void main(void){
     println!("\n总 Token 数: {} (包括 EOF)", tokens.len());
 
     let mut parser = c_minus::parser::Parser::new(tokens);
-    let ast = parser.parse_program().unwrap();
+    let ast = parser.parse_program();
 
-    println!("AST:\n{}", print_tree(&ast));
+    if parser.errors.is_empty() {
+        println!("✓ 没有语法错误");
+    } else {
+        println!("✗ 发现语法错误:");
+        for err in &parser.errors {
+            println!("  {}", err);
+        }
+    }
+
+    println!("\nAST:\n{}", print_tree(&ast));
 }

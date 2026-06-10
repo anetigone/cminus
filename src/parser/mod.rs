@@ -8,16 +8,20 @@ use crate::lexer::token::*;
 use ast::*;
 use error::ParseError;
 
-type ParseResult<T> = Result<T, ParseError>;
-
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    /// 收集到的错误
+    pub errors: Vec<ParseError>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, current: 0 }
+        Parser {
+            tokens,
+            current: 0,
+            errors: Vec::new(),
+        }
     }
 }
 
@@ -53,15 +57,12 @@ impl Parser {
         std::mem::discriminant(self.peek()) == std::mem::discriminant(expected)
     }
 
-    /// 期望当前token是某个特定的类型，如果是则消耗并返回，否则返回错误
-    pub fn expect(&mut self, expected: TokenKind) -> ParseResult<Token> {
+    /// 期望当前token是某个特定的类型，如果是则消耗并返回，否则记录错误并返回 None
+    pub fn expect(&mut self, expected: TokenKind) -> Option<Token> {
         if self.matches(&expected) {
-            Ok(self.advance().clone())
+            Some(self.advance().clone())
         } else {
-            Err(ParseError::new(
-                format!("Expected token {:?}, found {:?}", expected, self.peek()),
-                self.current(),
-            ))
+            self.error(format!("Expected token {:?}, found {:?}", expected, self.peek()))
         }
     }
 
@@ -75,71 +76,113 @@ impl Parser {
     }
 
     /// 消耗一个标识符，返回名字
-    pub fn expect_identifier(&mut self) -> ParseResult<String> {
+    pub fn expect_identifier(&mut self) -> Option<String> {
         if let TokenKind::Identifier(name) = self.peek() {
             let name = name.clone();
             self.advance();
-            Ok(name)
+            Some(name)
         } else {
-            Err(ParseError::new(
-                format!("Expected identifier, found {:?}", self.peek()),
-                self.current(),
-            ))
+            self.error(format!("Expected identifier, found {:?}", self.peek()))
         }
     }
 
-    /// 消耗一个字面量，返回值
-    pub fn expect_number(&mut self) -> ParseResult<i64> {
+    /// 消耗一个数字字面量，返回值
+    pub fn expect_number(&mut self) -> Option<i64> {
         if let TokenKind::Number(value) = self.peek() {
             let value = *value;
             self.advance();
-            Ok(value)
+            Some(value)
         } else {
-            Err(ParseError::new(
-                format!("Expected number, found {:?}", self.peek()),
-                self.current(),
-            ))
+            self.error(format!("Expected number, found {:?}", self.peek()))
         }
     }
 
-    pub fn expect_string(&mut self) -> ParseResult<String> {
+    pub fn expect_string(&mut self) -> Option<String> {
         if let TokenKind::String(value) = self.peek() {
             let value = value.clone();
             self.advance();
-            Ok(value)
+            Some(value)
         } else {
-            Err(ParseError::new(
-                format!("Expected string, found {:?}", self.peek()),
-                self.current(),
-            ))
+            self.error(format!("Expected string, found {:?}", self.peek()))
+        }
+    }
+
+    /// 记录一个语法错误并返回 None
+    fn error<T>(&mut self, message: String) -> Option<T> {
+        self.errors.push(ParseError::new(message, self.current()));
+        None
+    }
+
+    /// 恐慌模式同步：跳过 token 直到遇到同步点
+    /// 同步 token: `;`、`)` (消费), `}`、`EOF` (不消费)
+    fn synchronize(&mut self) {
+        loop {
+            match self.peek() {
+                TokenKind::Semicolon => {
+                    self.advance();
+                    return;
+                }
+                TokenKind::RParen => {
+                    self.advance();
+                    return;
+                }
+                TokenKind::RBrace | TokenKind::EOF => {
+                    return;
+                }
+                _ => {
+                    self.advance();
+                }
+            }
         }
     }
 }
 
 /// 语法解析
 impl Parser {
-    /// 解析整个程序
-    pub fn parse_program(&mut self) -> ParseResult<Program> {
+    /// 解析整个程序，返回 Program（声明列表可能不完整）
+    pub fn parse_program(&mut self) -> Program {
         let mut declarations = Vec::new();
 
         while !self.matches(&TokenKind::EOF) {
-            declarations.push(self.parse_declaration()?);
+            let pos = self.current;
+            if let Some(decl) = self.parse_declaration() {
+                declarations.push(decl);
+            } else {
+                // parse_declaration 失败并已同步
+                // 如果位置没有前进（卡住），强制前进避免死循环
+                if self.current == pos {
+                    self.advance();
+                }
+            }
         }
-        Ok(Program { declarations })
+        Program { declarations }
     }
 
     /// 解析一个声明
     //  declaration → type-specifier ID declaration-tail
     //  declaration-tail → ';' | '[' NUM ']' ';' | '(' params ')' compound-stmt
-    pub fn parse_declaration(&mut self) -> ParseResult<Declaration> {
-        let type_spec = self.parse_type_spec()?;
-        let name = self.expect_identifier()?;
+    pub fn parse_declaration(&mut self) -> Option<Declaration> {
+        let type_spec = match self.parse_type_spec() {
+            Some(t) => t,
+            None => {
+                self.synchronize();
+                return None;
+            }
+        };
+
+        let name = match self.expect_identifier() {
+            Some(n) => n,
+            None => {
+                self.synchronize();
+                return None;
+            }
+        };
 
         match self.peek() {
             TokenKind::Semicolon => {
                 // var declaration: type-specifier ID ';'
                 self.advance();
-                Ok(Declaration::Var(VarDecl {
+                Some(Declaration::Var(VarDecl {
                     type_spec,
                     name,
                     array_size: None,
@@ -148,10 +191,22 @@ impl Parser {
             TokenKind::LBracket => {
                 // array declaration: type-specifier ID '[' NUM ']' ';'
                 self.advance();
-                let array_size = self.expect_number()?;
-                self.expect(TokenKind::RBracket)?;
-                self.expect(TokenKind::Semicolon)?;
-                Ok(Declaration::Var(VarDecl {
+                let array_size = match self.expect_number() {
+                    Some(n) => n,
+                    None => {
+                        self.synchronize();
+                        return None;
+                    }
+                };
+                if self.expect(TokenKind::RBracket).is_none() {
+                    self.synchronize();
+                    return None;
+                }
+                if self.expect(TokenKind::Semicolon).is_none() {
+                    self.synchronize();
+                    return None;
+                }
+                Some(Declaration::Var(VarDecl {
                     type_spec,
                     name,
                     array_size: Some(array_size.try_into().unwrap()),
@@ -160,121 +215,164 @@ impl Parser {
             TokenKind::LParen => {
                 // function declaration: type-specifier ID '(' params ')' compound-stmt
                 self.advance();
-                let params = self.parse_params()?;
-                self.expect(TokenKind::RParen)?;
-                let body = self.parse_compound_stmt()?;
-                Ok(Declaration::Func(FuncDecl {
+                let params = match self.parse_params() {
+                    Some(p) => p,
+                    None => {
+                        self.synchronize();
+                        return None;
+                    }
+                };
+                if self.expect(TokenKind::RParen).is_none() {
+                    self.synchronize();
+                    return None;
+                }
+                let body = match self.parse_compound_stmt() {
+                    Some(b) => b,
+                    None => {
+                        self.synchronize();
+                        return None;
+                    }
+                };
+                Some(Declaration::Func(FuncDecl {
                     return_type: type_spec,
                     name,
                     params,
                     body,
                 }))
             }
-            _ => Err(ParseError::new(
-                format!("Expected ';', '[', or '(', found {:?}", self.peek()),
-                self.current(),
-            )),
+            _ => {
+                self.error::<()>(format!(
+                    "Expected ';', '[', or '(', found {:?}",
+                    self.peek()
+                ));
+                self.synchronize();
+                None
+            }
         }
     }
 
     /// 解析一个类型
-    pub fn parse_type_spec(&mut self) -> ParseResult<TypeSpec> {
+    pub fn parse_type_spec(&mut self) -> Option<TypeSpec> {
         match self.peek() {
             TokenKind::Int => {
                 self.advance();
-                Ok(TypeSpec::Int)
+                Some(TypeSpec::Int)
             }
             TokenKind::Void => {
                 self.advance();
-                Ok(TypeSpec::Void)
+                Some(TypeSpec::Void)
             }
-            _ => Err(ParseError::new(
-                format!("Expected type specifier, found {:?}", self.peek()),
-                self.current(),
-            )),
+            _ => self.error(format!("Expected type specifier, found {:?}", self.peek())),
         }
     }
 
     /// 解析参数列表
-    pub fn parse_params(&mut self) -> ParseResult<Vec<Param>> {
+    pub fn parse_params(&mut self) -> Option<Vec<Param>> {
         let mut params = Vec::new();
 
         if self.matches(&TokenKind::RParen) {
-            return Ok(params);
+            return Some(params);
         }
 
         // void 作为唯一参数表示无参数
         if self.matches(&TokenKind::Void) {
             self.advance();
-            return Ok(params);
+            return Some(params);
         }
 
         // Parse parameter declarations
-        while !self.matches(&TokenKind::RParen) {
+        while !self.matches(&TokenKind::RParen) && !self.matches(&TokenKind::EOF) {
             let type_spec = self.parse_type_spec()?;
             let name = self.expect_identifier()?;
-            if self.matches(&TokenKind::LBracket) {
+            let array_size = if self.matches(&TokenKind::LBracket) {
                 self.advance();
-                let array_size = if matches!(self.peek(), TokenKind::Number(_)) {
+                let size = if matches!(self.peek(), TokenKind::Number(_)) {
                     Some(self.expect_number()?.try_into().unwrap())
                 } else {
                     None
                 };
                 self.expect(TokenKind::RBracket)?;
-                params.push(Param {
-                    type_spec,
-                    name,
-                    array_size,
-                });
+                size
             } else {
-                params.push(Param {
-                    type_spec,
-                    name,
-                    array_size: None,
-                });
-            }
+                None
+            };
+
+            params.push(Param {
+                type_spec,
+                name,
+                array_size,
+            });
 
             if !self.matches(&TokenKind::RParen) {
                 self.expect(TokenKind::Comma)?;
             }
         }
 
-        Ok(params)
+        Some(params)
     }
 
     /// 解析一个语句
-    pub fn parse_stmt(&mut self) -> ParseResult<Stmt> {
+    pub fn parse_stmt(&mut self) -> Option<Stmt> {
         match self.peek() {
             TokenKind::If => self.parse_selection_stmt(),
             TokenKind::While => self.parse_iteration_stmt(),
             TokenKind::Return => self.parse_return_stmt(),
             TokenKind::LBrace => {
                 let compound = self.parse_compound_stmt()?;
-                Ok(Stmt::Compound(compound))
+                Some(Stmt::Compound(compound))
             }
             TokenKind::Semicolon => {
                 self.advance();
-                Ok(Stmt::Empty)
+                Some(Stmt::Empty)
             }
             _ => self.parse_expression_stmt(),
         }
     }
 
     /// 解析一个选择语句 if '(' expression ')' stmt [else stmt]
-    pub fn parse_selection_stmt(&mut self) -> ParseResult<Stmt> {
+    pub fn parse_selection_stmt(&mut self) -> Option<Stmt> {
         self.advance(); // 消耗 'if'
-        self.expect(TokenKind::LParen)?; // 消耗 '('
-        let condition = self.parse_expression()?;
-        self.expect(TokenKind::RParen)?; // 消耗 ')'
 
-        let then_branch = Box::new(self.parse_stmt()?); // 解析 then 分支
+        if self.expect(TokenKind::LParen).is_none() {
+            self.synchronize();
+            return None;
+        }
+
+        let condition = match self.parse_expression() {
+            Some(e) => e,
+            None => {
+                self.synchronize();
+                return None;
+            }
+        };
+
+        if self.expect(TokenKind::RParen).is_none() {
+            self.synchronize();
+            return None;
+        }
+
+        let then_branch = match self.parse_stmt() {
+            Some(s) => Box::new(s),
+            None => {
+                self.synchronize();
+                return None;
+            }
+        };
+
         let else_branch = if self.matches(&TokenKind::Else) {
             self.advance();
-            Some(Box::new(self.parse_stmt()?))
+            match self.parse_stmt() {
+                Some(s) => Some(Box::new(s)),
+                None => {
+                    self.synchronize();
+                    return None;
+                }
+            }
         } else {
             None
         };
-        Ok(Stmt::Selection(SelectionStmt {
+
+        Some(Stmt::Selection(SelectionStmt {
             condition,
             then_brach: then_branch,
             else_brach: else_branch,
@@ -282,24 +380,24 @@ impl Parser {
     }
 
     /// 解析一个表达式, expression → simple-expression | var '=' expression
-    pub fn parse_expression(&mut self) -> ParseResult<Expression> {
+    pub fn parse_expression(&mut self) -> Option<Expression> {
         let expr = self.parse_simple_expression()?;
         if let Expression::LVar(lvar) = &expr {
             if self.matches(&TokenKind::Assign) {
                 self.advance();
                 let rhs = self.parse_expression()?;
-                return Ok(Expression::Assign {
+                return Some(Expression::Assign {
                     lvar: lvar.clone(),
                     expr: Box::new(rhs),
                 });
             }
         }
-        Ok(expr)
+        Some(expr)
     }
 
     /// 解析一个简单表达式, simple-expression → additive-expression relop additive-expression
     /// relop → '<' | '>' | '<=' | '>=' | '==' | '!='
-    pub fn parse_simple_expression(&mut self) -> ParseResult<Expression> {
+    pub fn parse_simple_expression(&mut self) -> Option<Expression> {
         let left = self.parse_additive_expression()?;
         let op = match self.peek() {
             TokenKind::Lt => BinaryOp::Lt,
@@ -308,11 +406,11 @@ impl Parser {
             TokenKind::Ge => BinaryOp::Ge,
             TokenKind::Eq => BinaryOp::Eq,
             TokenKind::Ne => BinaryOp::Ne,
-            _ => return Ok(left),
+            _ => return Some(left),
         };
         self.advance();
         let right = self.parse_additive_expression()?;
-        Ok(Expression::BinOp {
+        Some(Expression::BinOp {
             op,
             left: Box::new(left),
             right: Box::new(right),
@@ -320,7 +418,7 @@ impl Parser {
     }
 
     /// 解析一个加法表达式, additive-expression → term (addop term)*
-    pub fn parse_additive_expression(&mut self) -> ParseResult<Expression> {
+    pub fn parse_additive_expression(&mut self) -> Option<Expression> {
         let mut left = self.parse_term()?;
 
         while matches!(self.peek(), TokenKind::Plus | TokenKind::Minus) {
@@ -337,11 +435,11 @@ impl Parser {
                 right: Box::new(right),
             };
         }
-        Ok(left)
+        Some(left)
     }
 
     /// 解析一个项, term → factor (mulop factor)*
-    pub fn parse_term(&mut self) -> ParseResult<Expression> {
+    pub fn parse_term(&mut self) -> Option<Expression> {
         let mut left = self.parse_factor()?;
 
         while matches!(self.peek(), TokenKind::Star | TokenKind::Slash) {
@@ -358,17 +456,17 @@ impl Parser {
                 right: Box::new(right),
             };
         }
-        Ok(left)
+        Some(left)
     }
 
     /// 解析一个因子, factor → '(' expression ')'| ID factor-tail | NUM | STRING
-    pub fn parse_factor(&mut self) -> ParseResult<Expression> {
+    pub fn parse_factor(&mut self) -> Option<Expression> {
         match self.peek() {
             TokenKind::LParen => {
                 self.advance(); // 消耗 '('
                 let expr = self.parse_expression()?;
-                self.expect(TokenKind::RParen)?; // 消耗 ')'
-                Ok(expr)
+                self.expect(TokenKind::RParen)?;
+                Some(expr)
             }
             TokenKind::Identifier(_) => {
                 let id = self.expect_identifier()?;
@@ -377,107 +475,165 @@ impl Parser {
             TokenKind::Number(num) => {
                 let num = *num as i32;
                 self.advance(); // 消耗 NUM
-                Ok(Expression::Number(num))
+                Some(Expression::Number(num))
             }
             TokenKind::String(value) => {
                 let value = value.clone();
                 self.advance(); // 消耗 STRING
-                Ok(Expression::String(value))
+                Some(Expression::String(value))
             }
-            _ => Err(ParseError::new(
-                format!(
-                    "Expected '(', identifier, number, or string, found {:?}",
-                    self.peek()
-                ),
-                self.current(),
+            _ => self.error(format!(
+                "Expected '(', identifier, number, or string, found {:?}",
+                self.peek()
             )),
         }
     }
 
     /// 解析一个因子的尾部(函数调用), factor-tail → '(' args ')' | ε
-    pub fn parse_factor_tail(&mut self, name: String) -> ParseResult<Expression> {
+    pub fn parse_factor_tail(&mut self, name: String) -> Option<Expression> {
         match self.peek() {
             TokenKind::LParen => {
                 self.advance();
                 let mut args = Vec::new();
                 if !self.matches(&TokenKind::RParen) {
                     args.push(self.parse_expression()?);
-                    while !self.matches(&TokenKind::RParen) {
+                    while !self.matches(&TokenKind::RParen) && !self.matches(&TokenKind::EOF) {
                         self.expect(TokenKind::Comma)?;
                         args.push(self.parse_expression()?);
                     }
                 }
                 self.expect(TokenKind::RParen)?;
-                Ok(Expression::Call { name, args })
+                Some(Expression::Call { name, args })
             }
             TokenKind::LBracket => {
                 self.advance();
                 let index = self.parse_expression()?;
                 self.expect(TokenKind::RBracket)?;
-                Ok(Expression::LVar(LVar {
+                Some(Expression::LVar(LVar {
                     name,
                     index: Some(Box::new(index)),
                 }))
             }
-            _ => Ok(Expression::LVar(LVar { name, index: None })), // ε
+            _ => Some(Expression::LVar(LVar { name, index: None })),
         }
     }
 
-    pub fn parse_iteration_stmt(&mut self) -> ParseResult<Stmt> {
+    pub fn parse_iteration_stmt(&mut self) -> Option<Stmt> {
         self.advance(); // 消耗 'while'
-        self.expect(TokenKind::LParen)?; // 消耗 '('
 
-        let condition = self.parse_expression()?;
-        self.expect(TokenKind::RParen)?; // 消耗 ')'
+        if self.expect(TokenKind::LParen).is_none() {
+            self.synchronize();
+            return None;
+        }
 
-        let body = self.parse_stmt()?; // 解析循环体
+        let condition = match self.parse_expression() {
+            Some(e) => e,
+            None => {
+                self.synchronize();
+                return None;
+            }
+        };
 
-        Ok(Stmt::Iteration(IterationStmt {
+        if self.expect(TokenKind::RParen).is_none() {
+            self.synchronize();
+            return None;
+        }
+
+        let body = match self.parse_stmt() {
+            Some(s) => s,
+            None => {
+                self.synchronize();
+                return None;
+            }
+        };
+
+        Some(Stmt::Iteration(IterationStmt {
             condition,
             body: Box::new(body),
         }))
     }
 
-    pub fn parse_return_stmt(&mut self) -> ParseResult<Stmt> {
+    pub fn parse_return_stmt(&mut self) -> Option<Stmt> {
         self.advance(); // 消耗 'return'
 
         match self.peek() {
             TokenKind::Semicolon => {
                 self.advance(); // 消耗 ';'
-                Ok(Stmt::Return(None))
+                Some(Stmt::Return(None))
             }
             _ => {
-                let expr = self.parse_expression()?;
-                self.expect(TokenKind::Semicolon)?;
-                Ok(Stmt::Return(Some(expr)))
+                let expr = match self.parse_expression() {
+                    Some(e) => e,
+                    None => {
+                        self.synchronize();
+                        return None;
+                    }
+                };
+                if self.expect(TokenKind::Semicolon).is_none() {
+                    self.synchronize();
+                    return None;
+                }
+                Some(Stmt::Return(Some(expr)))
             }
         }
     }
 
-    pub fn parse_expression_stmt(&mut self) -> ParseResult<Stmt> {
-        let expr = self.parse_expression()?;
-        self.expect(TokenKind::Semicolon)?;
-        Ok(Stmt::Expression(Some(expr)))
+    pub fn parse_expression_stmt(&mut self) -> Option<Stmt> {
+        let expr = match self.parse_expression() {
+            Some(e) => e,
+            None => {
+                self.synchronize();
+                return None;
+            }
+        };
+        if self.expect(TokenKind::Semicolon).is_none() {
+            self.synchronize();
+            return None;
+        }
+        Some(Stmt::Expression(Some(expr)))
     }
 
-    pub fn parse_compound_stmt(&mut self) -> ParseResult<CompoundStmt> {
-        self.expect(TokenKind::LBrace)?;
+    pub fn parse_compound_stmt(&mut self) -> Option<CompoundStmt> {
+        if self.expect(TokenKind::LBrace).is_none() {
+            return None;
+        }
+
         let mut declarations = Vec::new();
         let mut statements = Vec::new();
 
-        while !self.matches(&TokenKind::RBrace) {
+        while !self.matches(&TokenKind::RBrace) && !self.matches(&TokenKind::EOF) {
+            let pos = self.current;
             if let TokenKind::Int = self.peek() {
-                declarations.push(self.parse_declaration()?);
+                if let Some(decl) = self.parse_declaration() {
+                    declarations.push(decl);
+                }
+                // parse_declaration 失败时已同步
             } else {
-                statements.push(self.parse_stmt()?);
+                if let Some(stmt) = self.parse_stmt() {
+                    statements.push(stmt);
+                }
+                // parse_stmt 失败时已同步
+            }
+            // 防止位置没前进导致死循环
+            if self.current == pos {
+                self.advance();
             }
         }
-        self.advance(); // 消耗 '}'
 
-        Ok(CompoundStmt {
+        // 消耗 '}'
+        if self.matches(&TokenKind::RBrace) {
+            self.advance();
+        } else {
+            // 遇到 EOF 或其他意外 token，缺少 '}'
+            self.error::<()>(format!(
+                "Expected token RBrace, found {:?}",
+                self.peek()
+            ));
+        }
+
+        Some(CompoundStmt {
             local_decls: declarations,
             stmts: statements,
         })
     }
 }
-
