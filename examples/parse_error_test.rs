@@ -1,6 +1,7 @@
-// 语法分析错误测试 -- 展示各种语法错误的检测
+// 语法分析错误测试 -- 展示恐慌恢复模式下的一次性多错误检测
 //
-// 本示例展示 parser 在遇到各种语法错误时产生的 ParseError。
+// 本示例展示 parser 在恐慌恢复模式下，遇到多个语法错误时
+// 能够一次性报告所有错误，而不是遇到第一个错误就停止。
 // 不打印 token 流，只展示源代码和对应的语法错误。
 
 use c_minus::parser::Parser;
@@ -31,9 +32,9 @@ fn parse_and_show(name: &str, source: &str) {
         println!("✓ 语法分析成功 (本应报错!)");
         println!("AST:\n{}", c_minus::parser::print::print_tree(&_ast));
     } else {
-        println!("✗ 语法错误:");
-        for err in &parser.errors {
-            println!("  {}", err);
+        println!("✗ 语法错误 (共 {} 个):", parser.errors.len());
+        for (i, err) in parser.errors.iter().enumerate() {
+            println!("  {}. {}", i + 1, err);
         }
     }
     println!();
@@ -41,97 +42,83 @@ fn parse_and_show(name: &str, source: &str) {
 
 fn main() {
     println!("╔══════════════════════════════════════════╗");
-    println!("║     C-Minus 语法分析错误测试             ║");
+    println!("║  C-Minus 语法分析错误测试                ║");
+    println!("║  (恐慌恢复模式 - 一次性报告所有错误)      ║");
     println!("╚══════════════════════════════════════════╝\n");
 
-    // 错误 1: 缺少分号
+    // 测试 1: 多个声明各缺少分号
     parse_and_show(
-        "缺少分号",
-        "int x",
+        "多个声明缺少分号",
+        r#"
+int x
+int y
+int z
+"#,
     );
 
-    // 错误 2: 缺少类型说明符
+    // 测试 2: 多种错误混合在一个函数中
     parse_and_show(
-        "缺少类型说明符",
-        "x;",
+        "函数内多种错误混合",
+        r#"
+void main() {
+    int a
+    x = 1 + ;
+    if (x > 0 return;
+    while x > 0) { a = 1; }
+}
+"#,
     );
 
-    // 错误 3: 函数声明缺少右括号
+    // 测试 3: 多个函数各有不同错误
     parse_and_show(
-        "函数声明缺少右小括号",
-        "void main( {}",
+        "多个函数各有不同错误",
+        r#"
+int add(int a, int b {
+    return a + b
+}
+
+void main( {
+    int arr[10;
+    int x
+    output(x, y;
+}
+"#,
     );
 
-    // 错误 4: 函数体缺少右花括号
+    // 测试 4: 数组声明缺少大小 + 缺少标识符
     parse_and_show(
-        "函数体缺少右花括号",
-        "void main() {",
+        "数组声明系列错误",
+        r#"
+int arr1[];
+int 123;
+int arr2[10;
+"#,
     );
 
-    // 错误 5: 声明中使用了数字代替标识符
+    // 测试 5: 嵌套语句中多层错误
     parse_and_show(
-        "声明中使用数字代替标识符",
-        "int 123;",
+        "嵌套语句多层错误",
+        r#"
+void main() {
+    if (x > 0) {
+        int a
+        if (y > 0) {
+            return 1
+        }
+    }
+}
+"#,
     );
 
-    // 错误 6: 数组声明缺少右方括号
+    // 测试 6: 全局声明级别的多个错误
     parse_and_show(
-        "数组声明缺少右方括号",
-        "int arr[10;",
-    );
-
-    // 错误 7: 数组声明缺少大小
-    parse_and_show(
-        "数组声明缺少大小",
-        "int arr[];",
-    );
-
-    // 错误 8: if 语句缺少条件中的右括号
-    parse_and_show(
-        "if 语句缺少右小括号",
-        "void main() { if (x return; }",
-    );
-
-    // 错误 9: while 语句缺少左括号
-    parse_and_show(
-        "while 语句缺少左小括号",
-        "void main() { while x > 0) return; }",
-    );
-
-    // 错误 10: return 语句缺少分号
-    parse_and_show(
-        "return 语句缺少分号",
-        "int main() { return 42 }",
-    );
-
-    // 错误 11: 赋值表达式缺少分号
-    parse_and_show(
-        "赋值表达式缺少分号",
-        "void main() { x = 1 }",
-    );
-
-    // 错误 12: 表达式中出现非法 token
-    parse_and_show(
-        "表达式中缺少右小括号",
-        "void main() { return (x + 1; }",
-    );
-
-    // 错误 13: 声明位置出现非法 token
-    parse_and_show(
-        "声明位置出现非法 token (缺少 ';' 或 '(' 或 '[')",
-        "int x int y;",
-    );
-
-    // 错误 14: 复合语句缺少右花括号 (嵌套)
-    parse_and_show(
-        "嵌套复合语句缺少右花括号",
-        "void main() { { x; }",
-    );
-
-    // 错误 15: 函数调用缺少右括号
-    parse_and_show(
-        "函数调用缺少右小括号",
-        "void main() { output(x, y; }",
+        "全局声明多个错误",
+        r#"
+int x int y;
+123;
+int arr[;
+void main() {}
+"#,
     );
 
     // ===== 作为对比，最后展示一段正确的代码 =====
