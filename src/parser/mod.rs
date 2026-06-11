@@ -173,6 +173,7 @@ impl Parser {
                 return None;
             }
         };
+        let name_span = self.current();
 
         match self.peek() {
             TokenKind::Semicolon => {
@@ -182,6 +183,7 @@ impl Parser {
                     type_spec,
                     name,
                     array_size: None,
+                    span: name_span,
                 }))
             }
             TokenKind::LBracket => {
@@ -213,6 +215,7 @@ impl Parser {
                     type_spec,
                     name,
                     array_size: Some(array_size),
+                    span: name_span,
                 }))
             }
             TokenKind::LParen => {
@@ -241,6 +244,7 @@ impl Parser {
                     name,
                     params,
                     body,
+                    span: name_span,
                 }))
             }
             _ => {
@@ -284,6 +288,7 @@ impl Parser {
         while !self.matches(&TokenKind::RParen) && !self.matches(&TokenKind::EOF) {
             let type_spec = self.parse_type_spec()?;
             let name = self.expect_identifier()?;
+            let param_span = self.current();
             let array_size = if self.matches(&TokenKind::LBracket) {
                 self.advance();
                 let size = if matches!(self.peek(), TokenKind::Number(_)) {
@@ -305,6 +310,7 @@ impl Parser {
                 type_spec,
                 name,
                 array_size,
+                span: param_span,
             });
 
             if !self.matches(&TokenKind::RParen) {
@@ -474,7 +480,8 @@ impl Parser {
             }
             TokenKind::Identifier(_) => {
                 let id = self.expect_identifier()?;
-                self.parse_factor_tail(id)
+                let id_span = self.current();
+                self.parse_factor_tail(id, id_span)
             }
             TokenKind::Number(num) => {
                 let num = *num as i32;
@@ -491,7 +498,7 @@ impl Parser {
     }
 
     /// 解析一个因子的尾部(函数调用), factor-tail → '(' args ')' | ε
-    pub fn parse_factor_tail(&mut self, name: String) -> Option<Expression> {
+    pub fn parse_factor_tail(&mut self, name: String, span: Span) -> Option<Expression> {
         match self.peek() {
             TokenKind::LParen => {
                 self.advance();
@@ -504,7 +511,7 @@ impl Parser {
                     }
                 }
                 self.expect(TokenKind::RParen)?;
-                Some(Expression::Call { name, args })
+                Some(Expression::Call { name, args, span })
             }
             TokenKind::LBracket => {
                 self.advance();
@@ -513,9 +520,10 @@ impl Parser {
                 Some(Expression::LVar(LVar {
                     name,
                     index: Some(Box::new(index)),
+                    span,
                 }))
             }
-            _ => Some(Expression::LVar(LVar { name, index: None })),
+            _ => Some(Expression::LVar(LVar { name, index: None, span })),
         }
     }
 
@@ -580,7 +588,7 @@ impl Parser {
     }
 
     pub fn parse_expression_stmt(&mut self) -> Option<Stmt> {
-        let expr = match self.parse_expression() {
+        let expr: Expression = match self.parse_expression() {
             Some(e) => e,
             None => {
                 self.synchronize();

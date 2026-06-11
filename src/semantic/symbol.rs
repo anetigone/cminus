@@ -1,4 +1,4 @@
-use crate::parser::ast::TypeSpec;
+use crate::{lexer::token::Span, parser::ast::TypeSpec};
 
 /// 符号表相关定义
 #[derive(Debug, Clone)]
@@ -31,5 +31,7 @@ pub struct ParamInfo {
 
 #[derive(Debug, Clone)]
 pub struct Symbol {
+    pub name: String, // 符号名
     pub kind: SymbolKind,
+    pub span: Span, // 位置
 }

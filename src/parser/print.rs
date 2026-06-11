@@ -172,7 +172,7 @@ fn print_expr(expr: &Expression, prefix: &str, is_last: bool, lines: &mut Vec<St
             print_expr(left, &child_prefix, false, lines);
             print_expr(right, &child_prefix, true, lines);
         }
-        Expression::Call { name, args } => {
+        Expression::Call { name, args, .. } => {
             lines.push(format!("{}{}CallK: {}", prefix, connector, name));
             if args.is_empty() {
                 lines.push(format!("{}└──ArgsK: (empty)", child_prefix));

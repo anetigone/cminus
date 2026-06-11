@@ -1,5 +1,7 @@
 use displaydoc::Display;
 
+use crate::lexer::token::Span;
+
 /// 类型说明符
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeSpec {
@@ -26,6 +28,7 @@ pub struct VarDecl {
     pub type_spec: TypeSpec,
     pub name: String,
     pub array_size: Option<u32>, //None表示不是数组,Some表示数组大小
+    pub span: Span,
 }
 
 /// 函数声明
@@ -35,6 +38,7 @@ pub struct FuncDecl {
     pub name: String,
     pub params: Vec<Param>,
     pub body: CompoundStmt,
+    pub span: Span,
 }
 
 /// 参数
@@ -43,6 +47,7 @@ pub struct Param {
     pub type_spec: TypeSpec,
     pub name: String,
     pub array_size: Option<u32>, //None表示不是数组,Some表示数组大小
+    pub span: Span,
 }
 
 /// 复合语句
@@ -93,6 +98,7 @@ pub enum Expression {
     Call {
         name: String,
         args: Vec<Expression>,
+        span: Span,
     },
     LVar(LVar),
     Number(i32),
@@ -104,6 +110,7 @@ pub enum Expression {
 pub struct LVar {
     pub name: String,
     pub index: Option<Box<Expression>>, //None表示普通变量,Some表示数组下标表达式
+    pub span: Span,
 }
 
 /// 二元运算符
