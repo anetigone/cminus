@@ -291,7 +291,7 @@ mod expression_tests {
     fn call_no_args() {
         let func = only_function(parse_source("void main() { input(); }"));
         match &func.body.stmts[0] {
-            Stmt::Expression(Some(Expression::Call { name, args })) => {
+            Stmt::Expression(Some(Expression::Call { name, args, .. })) => {
                 assert_eq!(name, "input");
                 assert!(args.is_empty());
             }
@@ -303,7 +303,7 @@ mod expression_tests {
     fn call_with_args() {
         let func = only_function(parse_source("void main() { output(x, y); }"));
         match &func.body.stmts[0] {
-            Stmt::Expression(Some(Expression::Call { name, args })) => {
+            Stmt::Expression(Some(Expression::Call { name, args, .. })) => {
                 assert_eq!(name, "output");
                 assert_eq!(args.len(), 2);
             }
@@ -315,7 +315,7 @@ mod expression_tests {
     fn call_string_argument() {
         let func = only_function(parse_source(r#"void main(){ output("hello\nworld"); }"#));
         match &func.body.stmts[0] {
-            Stmt::Expression(Some(Expression::Call { name, args })) => {
+            Stmt::Expression(Some(Expression::Call { name, args, .. })) => {
                 assert_eq!(name, "output");
                 assert_eq!(args.len(), 1);
                 match &args[0] {
@@ -545,7 +545,7 @@ mod nested_tests {
     fn nested_call() {
         let func = only_function(parse_source("void main() { return gcd(x, y); }"));
         match &func.body.stmts[0] {
-            Stmt::Return(Some(Expression::Call { name, args })) => {
+            Stmt::Return(Some(Expression::Call { name, args, .. })) => {
                 assert_eq!(name, "gcd");
                 assert_eq!(args.len(), 2);
             }

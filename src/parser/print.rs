@@ -168,7 +168,7 @@ fn print_expr(expr: &Expression, prefix: &str, is_last: bool, lines: &mut Vec<St
             print_expr(expr, &child_prefix, true, lines);
         }
         Expression::BinOp { op, left, right } => {
-            lines.push(format!("{}{}OpK: {}", prefix, connector, op));
+            lines.push(format!("{}{}OpK: {}", prefix, connector, op_str(op)));
             print_expr(left, &child_prefix, false, lines);
             print_expr(right, &child_prefix, true, lines);
         }
@@ -206,5 +206,20 @@ fn type_str(t: &TypeSpec) -> &'static str {
     match t {
         TypeSpec::Int => "int",
         TypeSpec::Void => "void",
+    }
+}
+
+fn op_str(op: &BinaryOp) -> &'static str {
+    match op {
+        BinaryOp::Add => "+",
+        BinaryOp::Sub => "-",
+        BinaryOp::Mul => "*",
+        BinaryOp::Div => "/",
+        BinaryOp::Eq => "==",
+        BinaryOp::Ne => "!=",
+        BinaryOp::Lt => "<",
+        BinaryOp::Gt => ">",
+        BinaryOp::Le => "<=",
+        BinaryOp::Ge => ">=",
     }
 }
